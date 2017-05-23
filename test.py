@@ -1,54 +1,60 @@
-import sys
-import glob, os 
-import time
-import logging
-from  watchdog.events import RegexMatchingEventHandler
 from watchdog.observers import Observer
-from watchdog.events import FileCreatedEvent
+from watchdog.events import FileSystemEventHandler
+import glob, os
+import requests
+import sys
+import time
 
-def check_file():
-    os.chdir("/vagrant/Code/program")
-    i = 0
-    file_w = open("/vagrant/Code/program/list.txt", "r+")
-    content = file_w.read()
-    x = content.split(';')
+class FileModifiedHandler(FileSystemEventHandler):
 
-    flag = 0
-    for file in glob.glob("*.*"):
-        for s in x :
-            if file == s:
-                flag = 1
-        if flag == 0:
-            print file
-            file = file +  ";"      
-            file_w.write(file)
+    def __init__(self, path, callback):
+        #self.file_name = file_name
+        self.callback = callback        
+        self.observer = Observer()
+        self.observer.schedule(self, path, recursive=False)
+        self.observer.start()
+        self.observer.join()
+        
 
-class Event(FileCreatedEvent):
-    path = dir
-    def on_moved(self,event):
-        return 0
-    def on_modified(self,event):
-        return 0 
-    def on_deleted(self,event):
-        return 0
+    def waiting_download(self,sample):        
+        a = 0;
+        b = 0;        
+        while a==0:
+            statinfo = os.stat(sample)
+            a = statinfo.st_size     
+       
+            time.sleep(2)
+            
+                               
+
     def on_created(self, event):
-       check_file()
+        file_mau = event.src_path + ".part"
+        file_mau = event.src_path.split("/")
+        file_mau = file_mau[-1]
+        
+        self.waiting_download(event.src_path)
+        REST_URL = "http://localhost:8090/tasks/create/file" 
+        self.observer.stop() 
+        with open(event.src_path, "rb") as sample:
+            files = {"file": (file_mau, sample)}
+            r = requests.post(REST_URL, files=files)
+        task_id = r.json()["task_id"]
+        print "send to sanbox with id: " + str(task_id)
+
+       
+
+            
 
 
-if __name__ == "__main__":
-    #logging.basicConfig(level=logging.INFO,
-                        #format='%(asctime)s - %(message)s',
-                        #datefmt='%Y-%m-%d %H:%M:%S')
-    #x = RegexMatchingEventHandler(ignore_regexes=['.part'], ignore_directories=True)
+from sys import argv, exit
 
-    path = sys.argv[1] if len(sys.argv) > 1 else '.'
-    event_handler = Event(FileCreatedEvent)
-    observer = Observer()
-    observer.schedule(event_handler, path, recursive=True)
-    observer.start()
-    try:
-        while True:
-            time.sleep(5)
-    except KeyboardInterrupt:
-        observer.stop()
-    observer.join()
+if __name__ == '__main__':
+
+    if not len(argv) == 1:
+        print("No file specified")
+        exit(1)
+
+    def callback():
+        print("FILE WAS CREATE")
+while True:       
+    FileModifiedHandler('.', callback)
